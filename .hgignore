@@ -1,0 +1,9 @@
+# Created by .ignore support plugin (hsz.mobi)
+syntax: glob
+
+### IntelliJ project folder
+.idea/
+
+### Python
+__pycache__/
+venv/
