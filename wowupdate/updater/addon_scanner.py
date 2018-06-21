@@ -15,10 +15,6 @@
 
 import os
 import re
-import shutil
-import time
-
-from zipfile import ZipFile
 
 from wowupdate.updater.colors import *
 
@@ -45,7 +41,10 @@ def find_addons(path):
 
 		try:
 			addon = AddOn.parse(addonpath, subdir)
-			addons += [addon]
+
+			if addon is not None:
+				addons += [addon]
+
 		except:
 			print("%serror reading folder %s%s" % (RED, subdir, NO_COLOR))
 
@@ -62,32 +61,34 @@ def find_addons(path):
 		status_color = NO_COLOR
 		status = ""
 
-		update = findUpdateFor(addon)
+		downloadable = findUpdateFor(addon)
+		installable = None
 
-		if update is not None:
-			status = update.version
+		if downloadable is not None:
+			status = downloadable.version
 			status_color = GRAY
 
-			if addon.isVersionUpgrade(update.version):
-				if update.zip_data is not None:
-					status = "=> %s" % update.version
-					status_color = GREEN
+			if addon.isVersionUpgrade(downloadable.version):
+				installable = downloadable.download()
+
+				if installable is not None:
+					if addon.isVersionUpgrade(installable.version):
+						status = "=> %s" % installable.version
+						status_color = GREEN
 		else:
 			addon_color = GRAY
 
 		print("%s%-55s%s%25s%s" % (addon_color, addon.to_string(), status_color, status, NO_COLOR))
 
 		if not dry_run:
-			if update is not None:
-				if addon.isVersionUpgrade(update.version):
-					if update.zip_data is not None:
-						if update.url is not None:
-							print("  installing %s" % update.url)
+			if installable is not None:
+				if addon.isVersionUpgrade(installable.version):
+					if installable.source is not None:
+						print("  installing %s" % installable.source)
 
-						installZipData(update.zip_data, addons_dir)
+					installable.install(addons_dir)
 
-						print("%sDONE%s" % (GREEN, NO_COLOR))
-
+					print("%sDONE%s" % (GREEN, NO_COLOR))
 
 
 def findUpdateFor(addon):
@@ -105,38 +106,4 @@ def findUpdateFor(addon):
 			return update
 
 	return None
-
-
-
-
-
-def installZipData(zipdata, addons_dir):
-	if not os.path.exists(addons_dir):
-		raise AttributeError("addons_dir does not exist: %s" % addons_dir)
-
-	with ZipFile(zipdata, 'r') as zipfl:
-		root_dirs = set()
-
-		for info in zipfl.infolist():
-			m = pattern_dir.match(info.filename)
-			if m is not None:
-				root_dir = m.group(1).strip()
-
-				if root_dir != "":
-					root_dirs.add(root_dir)
-
-		for root_dir in root_dirs:
-			path = os.path.join(addons_dir, root_dir)
-			if os.path.exists(path):
-				shutil.rmtree(path)
-
-			if os.path.exists(path):
-				raise Exception("path %s was not deleted." % path)
-
-		# some delay to ensure the directory is deleted
-		time.sleep(0.100)
-
-		zipfl.extractall(addons_dir)
-
-		zipfl.close()
 

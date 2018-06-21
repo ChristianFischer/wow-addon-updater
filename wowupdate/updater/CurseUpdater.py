@@ -13,13 +13,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-import io
 import re
 import urllib.error
 import urllib.request
 
-from wowupdate.updater.Updater import Updater
-from wowupdate.updater.Updater import Update
+from wowupdate.updater.Updater import IUpdater
+from wowupdate.updater.Updater import DownloadableWrapper
+from wowupdate.updater.ZipInstaller import downloadZipFromResponse
 
 
 regex_download_link = re.compile(
@@ -27,20 +27,20 @@ regex_download_link = re.compile(
 )
 
 
-class CurseUpdater(Updater):
+class CurseUpdater(IUpdater):
 
 	def canHandle(self, addon):
-		if addon.curse_project_id is None:
+		if addon.toc.curse_project_id is None:
 			return False
 
-		if addon.curse_version is None:
+		if addon.toc.curse_version is None:
 			return False
 
 		return True
 
 
 	def findUpdateFor(self, addon):
-		return self.findDownloadById(addon.curse_project_id, addon.name)
+		return self.findDownloadById(addon.toc.curse_project_id, addon.name)
 
 
 	def findDownloadByName(self, addon_name):
@@ -52,7 +52,7 @@ class CurseUpdater(Updater):
 
 		try:
 			with urllib.request.urlopen(url) as response:
-				return self.createUpdateFromResponse(addon_id, addon_name, response)
+				return self.createDownloadableFromResponse(addon_id, addon_name, response)
 
 		except urllib.error.HTTPError:
 			pass
@@ -69,14 +69,14 @@ class CurseUpdater(Updater):
 					url = ('https://www.curseforge.com%s' % file_url)
 
 					with urllib.request.urlopen(url) as response2:
-						return self.createUpdateFromResponse(addon_id, addon_name, response2)
+						return self.createDownloadableFromResponse(addon_id, addon_name, response2)
 
 		except urllib.error.HTTPError:
 			pass
 
 
 
-	def createUpdateFromResponse(self, addon_id, addon_name, response):
+	def createDownloadableFromResponse(self, addon_id, addon_name, response):
 		url = response.url
 
 		pattern_zip_version = re.compile('.*/%s[-+_](.*)\.zip' % addon_name, re.IGNORECASE)
@@ -84,15 +84,14 @@ class CurseUpdater(Updater):
 		if m is not None:
 			zip_version = m.group(1)
 
-			update = Update()
-			update.url = url
-			update.version = zip_version
+			installable = downloadZipFromResponse(
+				response,
+				source=url,
+				name=addon_name,
+				version=zip_version
+			)
 
-			zipdata_bytes = response.read()
-			zipdata = io.BytesIO(zipdata_bytes)
-			update.zip_data = zipdata
-
-			return update
+			return DownloadableWrapper(installable)
 
 		return None
 

@@ -21,48 +21,57 @@ import re
 regex_toc_attr = re.compile('## (.+?):\s*(.+)')
 
 
-class AddOn:
+class Toc:
 	@staticmethod
-	def parse(path, name):
-		addon = AddOn(path, name)
+	def parseFile(file):
+		try:
+			with codecs.open(file, encoding='utf-8') as fp:
+				return Toc.parseFileData(fp)
+
+		except:
+			pass
+
+		return None
+
+
+	@staticmethod
+	def parseFileData(filedata):
+		toc = Toc()
 
 		version = None
 		version_curse = None
 
-		with codecs.open(os.path.join(path, name+'.toc'), encoding='utf-8') as fp:
-			for line in fp:
-				m = regex_toc_attr.match(line)
-				if m is not None:
-					key = m.group(1).strip()
-					val = m.group(2).strip()
+		for line in filedata:
+			m = regex_toc_attr.match(line)
+			if m is not None:
+				key = m.group(1).strip()
+				val = m.group(2).strip()
 
-					if key == 'Version':
-						version = val
+				if key == 'Version':
+					version = val
 
-					if key == 'Dependencies':
-						addon.dependencies = re.split(",\s*", val)
+				if key == 'Dependencies':
+					toc.dependencies = re.split(",\s*", val)
 
-					if key == 'X-Curse-Packaged-Version':
-						addon.curse_version = val
-						version_curse = val
+				if key == 'X-Curse-Packaged-Version':
+					toc.curse_version = val
+					version_curse = val
 
-					if key == 'X-Curse-Project-ID':
-						addon.curse_project_id = val
+				if key == 'X-Curse-Project-ID':
+					toc.curse_project_id = val
 
-					if key == 'X-Website':
-						addon.website_url = val
+				if key == 'X-Website':
+					toc.website_url = val
 
 		if version is not None:
-			addon.version = version
+			toc.version = version
 		elif version_curse is not None:
-			addon.version = version_curse
+			toc.version = version_curse
 
-		return addon
+		return toc
 
 
-	def __init__(self, path, name):
-		self.path				= path
-		self.name				= name
+	def __init__(self):
 		self.version			= None
 		self.dependencies		= []
 
@@ -71,8 +80,30 @@ class AddOn:
 		self.website_url		= None
 
 
+
+
+class AddOn:
+	@staticmethod
+	def parse(path, name):
+		toc = Toc.parseFile(os.path.join(path, name+'.toc'))
+
+		if toc is not None:
+			addon = AddOn(path, name, toc)
+
+			return addon
+
+		return None
+
+
+	def __init__(self, path, name, toc):
+		self.path				= path
+		self.name				= name
+		self.toc				= toc
+		self.version			= toc.version
+
+
 	def dependsOn(self, other_addon):
-		if other_addon.name in self.dependencies:
+		if other_addon.name in self.toc.dependencies:
 			if other_addon.version == self.version:
 				if self.name.startswith(other_addon.name):
 					return True
@@ -90,11 +121,11 @@ class AddOn:
 	def print_details(self):
 		print(self.to_string())
 
-		if self.curse_project_id is not None:
-			print("  curse project: %s, version %s" % (self.curse_project_id, self.curse_version))
+		if self.toc.curse_project_id is not None:
+			print("  curse project: %s, version %s" % (self.toc.curse_project_id, self.toc.curse_version))
 
-		if self.website_url is not None:
-			print("  website: %s" % self.website_url)
+		if self.toc.website_url is not None:
+			print("  website: %s" % self.toc.website_url)
 
 
 	def to_string(self):
