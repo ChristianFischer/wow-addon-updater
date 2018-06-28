@@ -14,6 +14,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 from builtins import Exception
+from builtins import set
 
 
 class IDownloadable:
@@ -30,8 +31,12 @@ class IInstallable:
 	def __init__(self):
 		self.source  = None
 		self.version = None
+		self.folders = set()
 
 	def install(self, path):
+		raise Exception('Implement me')
+
+	def updateAddonInfo(self, addon):
 		raise Exception('Implement me')
 
 

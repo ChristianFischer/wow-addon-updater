@@ -39,13 +39,11 @@ class ZipInstallable(IInstallable):
 	def __init__(self, zipfl):
 		IInstallable.__init__(self)
 		self.zipfl = zipfl
+		self.toc = None
 
 
-	def install(self, addons_dir):
-		if not os.path.exists(addons_dir):
-			raise AttributeError("addons_dir does not exist: %s" % addons_dir)
-
-		root_dirs = set()
+	def parseZipInfo(self):
+		self.folders.clear()
 
 		for info in self.zipfl.infolist():
 			m = pattern_dir.match(info.filename)
@@ -53,9 +51,14 @@ class ZipInstallable(IInstallable):
 				root_dir = m.group(1).strip()
 
 				if root_dir != "":
-					root_dirs.add(root_dir)
+					self.folders.add(root_dir)
 
-		for root_dir in root_dirs:
+
+	def install(self, addons_dir):
+		if not os.path.exists(addons_dir):
+			raise AttributeError("addons_dir does not exist: %s" % addons_dir)
+
+		for root_dir in self.folders:
 			path = os.path.join(addons_dir, root_dir)
 			if os.path.exists(path):
 				shutil.rmtree(path)
@@ -69,6 +72,12 @@ class ZipInstallable(IInstallable):
 		self.zipfl.extractall(addons_dir)
 
 		self.zipfl.close()
+
+
+	def updateAddonInfo(self, addon):
+		#addon.updateToc(self.toc)
+		addon.folders = self.folders
+		addon.version = self.version
 
 
 
@@ -87,27 +96,29 @@ def downloadZipFromResponse(response, name=None, source=None, version=None):
 	zipdata_bytes = response.read()
 	zipdata = io.BytesIO(zipdata_bytes)
 
-	with ZipFile(zipdata, 'r') as zipfl:
-		installable = ZipInstallable(zipfl)
-		installable.source  = source
-		installable.version = version
+	zipfl = ZipFile(zipdata, 'r')
 
-		if name is not None:
-			toc_file_name = name + '/' + name + '.toc'
-			toc_file_info = findFileInZip(zipfl, toc_file_name)
+	installable = ZipInstallable(zipfl)
+	installable.parseZipInfo()
+	installable.source  = source
+	installable.version = version
 
-			if toc_file_info is not None:
-				with zipfl.open(toc_file_info, 'r') as toc_file:
-					data = toc_file.read()
-					toc_file_str = data.decode('utf-8').splitlines()
-					toc = Toc.parseFileData(toc_file_str)
+	if name is not None:
+		toc_file_name = name + '/' + name + '.toc'
+		toc_file_info = findFileInZip(zipfl, toc_file_name)
 
-					if toc.version is not None:
-						installable.version = toc.version
+		if toc_file_info is not None:
+			with zipfl.open(toc_file_info, 'r') as toc_file:
+				data = toc_file.read()
+				toc_file_str = data.decode('utf-8').splitlines()
+				toc = Toc.parseFileData(toc_file_str)
 
-		return installable
+				if toc.version is not None:
+					installable.version = toc.version
 
-	return None
+				installable.toc = toc
+
+	return installable
 
 
 

@@ -33,8 +33,8 @@ class CurseUpdater(IUpdater):
 		if addon.toc.curse_project_id is None:
 			return False
 
-		if addon.toc.curse_version is None:
-			return False
+		#if addon.toc.curse_version is None:
+		#	return False
 
 		return True
 
@@ -79,7 +79,7 @@ class CurseUpdater(IUpdater):
 	def createDownloadableFromResponse(self, addon_id, addon_name, response):
 		url = response.url
 
-		pattern_zip_version = re.compile('.*/%s[-+_](.*)\.zip' % addon_name, re.IGNORECASE)
+		pattern_zip_version = re.compile('.*/%s[-+_]?(.*)\.zip' % addon_name, re.IGNORECASE)
 		m = pattern_zip_version.match(url)
 		if m is not None:
 			zip_version = m.group(1)

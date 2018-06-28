@@ -17,6 +17,8 @@ import codecs
 import os
 import re
 
+from builtins import set
+
 
 regex_toc_attr = re.compile('## (.+?):\s*(.+)')
 
@@ -88,16 +90,25 @@ class AddOn:
 		toc = Toc.parseFile(os.path.join(path, name+'.toc'))
 
 		if toc is not None:
-			addon = AddOn(path, name, toc)
+			addon = AddOn(path, name)
+			addon.updateToc(toc)
 
 			return addon
 
 		return None
 
 
-	def __init__(self, path, name, toc):
+	def __init__(self, path, name):
 		self.path				= path
 		self.name				= name
+		self.folders			= set()
+		self.toc				= Toc()
+
+		# add the addon name as a primary folder
+		self.folders.add(name)
+
+
+	def updateToc(self, toc):
 		self.toc				= toc
 		self.version			= toc.version
 
@@ -126,6 +137,24 @@ class AddOn:
 
 		if self.toc.website_url is not None:
 			print("  website: %s" % self.toc.website_url)
+
+
+	def to_json(self):
+		folders = []
+		for folder in self.folders:
+			folders += [folder]
+
+		folders.sort()
+
+		data = {
+			'folders': folders,
+			'version': self.version,
+		}
+
+		if self.toc.curse_project_id is not None:
+			data['curse_project_id'] = self.toc.curse_project_id
+
+		return data
 
 
 	def to_string(self):

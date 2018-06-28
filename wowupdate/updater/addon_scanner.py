@@ -16,9 +16,13 @@
 import os
 import re
 
+from builtins import len
+from builtins import range
+
 from wowupdate.updater.colors import *
 
 from wowupdate.updater.AddOn import AddOn
+from wowupdate.updater.AddOnDb import AddOnDb
 from wowupdate.updater.CurseUpdater import CurseUpdater
 
 
@@ -33,21 +37,36 @@ all_updaters = [
 
 def find_addons(path):
 	addons_dir = os.path.join(path, 'Interface', 'AddOns')
+	scan_for_addons = True
 	dry_run = False
 
-	addons = []
-	for subdir in os.listdir(addons_dir):
-		addonpath = os.path.join(addons_dir, subdir)
+	# read addondb
+	addondb = AddOnDb(addons_dir)
+	addondb.open()
 
-		try:
-			addon = AddOn.parse(addonpath, subdir)
+	# get the list of all known addons
+	addons = addondb.getAddons()
 
-			if addon is not None:
-				addons += [addon]
+	# if enabled, search for currently unknown addons
+	if scan_for_addons:
+		for subdir in os.listdir(addons_dir):
+			addonpath = os.path.join(addons_dir, subdir)
 
-		except:
-			print("%serror reading folder %s%s" % (RED, subdir, NO_COLOR))
+			# check if this folder is already known by ano other addon
+			if addondb.isFolderKnown(subdir):
+				continue
 
+			try:
+				# read the addon's metadata
+				addon = AddOn.parse(addonpath, subdir)
+
+				if addon is not None:
+					addons += [addon]
+
+			except:
+				print("%serror reading folder %s%s" % (RED, subdir, NO_COLOR))
+
+	# find addons, which are part of another addon package and remove them
 	for addon_index in range(len(addons) - 1, 0, -1):
 		addon = addons[addon_index]
 
@@ -55,6 +74,9 @@ def find_addons(path):
 			if addon.dependsOn(maybe_parent):
 				addons.remove(addon)
 				break
+
+	# sort by addon name (case insensitive)
+	addons.sort(key=lambda addon: addon.name.lower())
 
 	for addon in addons:
 		addon_color = NO_COLOR
@@ -87,8 +109,15 @@ def find_addons(path):
 						print("  installing %s" % installable.source)
 
 					installable.install(addons_dir)
+					installable.updateAddonInfo(addon)
+
+					# store downloaded addon into addondb
+					addondb.add(addon)
 
 					print("%sDONE%s" % (GREEN, NO_COLOR))
+
+	if addondb.dirty:
+		addondb.save()
 
 
 def findUpdateFor(addon):
