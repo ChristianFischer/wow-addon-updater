@@ -103,6 +103,7 @@ class AddOn:
 		self.name				= name
 		self.folders			= set()
 		self.toc				= Toc()
+		self.ignore_updates		= False
 
 		# add the addon name as a primary folder
 		self.folders.add(name)
@@ -153,6 +154,9 @@ class AddOn:
 
 		if self.toc.curse_project_id is not None:
 			data['curse_project_id'] = self.toc.curse_project_id
+
+		if self.ignore_updates:
+			data['ignore-updates'] = self.ignore_updates
 
 		return data
 

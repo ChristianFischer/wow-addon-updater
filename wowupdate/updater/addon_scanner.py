@@ -95,8 +95,13 @@ def find_addons(path):
 
 				if installable is not None:
 					if addon.isVersionUpgrade(installable.version):
-						status = "=> %s" % installable.version
-						status_color = GREEN
+						if addon.ignore_updates:
+							status = "[ign] %s" % installable.version
+							status_color = YELLOW
+							installable = None
+						else:
+							status = "=> %s" % installable.version
+							status_color = GREEN
 		else:
 			addon_color = GRAY
 

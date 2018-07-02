@@ -85,6 +85,9 @@ class AddOnDb:
 					toc.curse_version = None
 					toc.version = addon_data['version']
 
+				if 'ignore-updates' in addon_data:
+					addon.ignore_updates = addon_data['ignore-updates']
+
 				addon.updateToc(toc)
 
 				self.addons[key] = addon
