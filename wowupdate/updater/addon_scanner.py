@@ -22,7 +22,6 @@ from builtins import range
 from wowupdate.updater.colors import *
 
 from wowupdate.updater.AddOn import AddOn
-from wowupdate.updater.AddOnDb import AddOnDb
 from wowupdate.updater.CurseUpdater import CurseUpdater
 
 
@@ -35,22 +34,14 @@ all_updaters = [
 ]
 
 
-def find_addons(path):
-	addons_dir = os.path.join(path, 'Interface', 'AddOns')
-	scan_for_addons = True
-	dry_run = False
-
-	# read addondb
-	addondb = AddOnDb(addons_dir)
-	addondb.open()
-
+def update_all(addondb, config, dry_run=False, scan_all=True):
 	# get the list of all known addons
 	addons = addondb.getAddons()
 
 	# if enabled, search for currently unknown addons
-	if scan_for_addons:
-		for subdir in os.listdir(addons_dir):
-			addonpath = os.path.join(addons_dir, subdir)
+	if scan_all:
+		for subdir in os.listdir(config.addons_dir):
+			addonpath = os.path.join(config.addons_dir, subdir)
 
 			# check if this folder is already known by ano other addon
 			if addondb.isFolderKnown(subdir):
@@ -113,7 +104,7 @@ def find_addons(path):
 					if installable.source is not None:
 						print("  installing %s" % installable.source)
 
-					installable.install(addons_dir)
+					installable.install(config.addons_dir)
 					installable.updateAddonInfo(addon)
 
 					# store downloaded addon into addondb

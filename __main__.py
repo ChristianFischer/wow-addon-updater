@@ -13,8 +13,112 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import argparse
 import os
+import sys
 
-from wowupdate.updater.addon_scanner import find_addons
+from wowupdate.updater.Config import Config
+from wowupdate.updater.AddOnDb import AddOnDb
+from wowupdate.updater.addon_scanner import update_all
 
-find_addons(os.getcwd())
+
+
+addons_dir = os.path.join(os.getcwd(), 'Interface', 'AddOns')
+
+
+config = Config()
+config.addons_dir = addons_dir
+
+
+# read addondb
+addondb = AddOnDb(addons_dir)
+addondb.open()
+
+
+
+def cmd_shell(arg):
+	parser = make_parser_shell()
+
+	for line in sys.stdin:
+		result = parser.parse_args(line.strip().split())
+
+		print("### %s" % result)
+
+		if 'shell_exit' in result and result.shell_exit:
+			break
+
+		result.run(result)
+
+
+def cmd_update(arg):
+	update_all(addondb=addondb, config=config, dry_run=arg.dry)
+
+
+def cmd_install(arg):
+	print("installing %s" % arg.ADDON_ID)
+
+
+def cmd_remove(arg):
+	print("removing %s" % arg.ADDON_ID)
+
+
+def make_parser():
+	# main parser
+	parser = argparse.ArgumentParser(
+		description="Update and Installer script for WoW addons"
+	)
+
+	parser.add_argument(
+		"--dry",
+		action="store_true"
+	)
+
+	# subparsers
+	subparsers = parser.add_subparsers()
+
+	# help
+	parser_help = subparsers.add_parser("help")
+	parser_help.set_defaults(run=lambda args: parser.print_help())
+
+
+	# updateall
+	parser_updateall = subparsers.add_parser("update")
+	parser_updateall.set_defaults(run=cmd_update)
+
+
+	# install
+	parser_install = subparsers.add_parser("install")
+
+	parser_install.add_argument(
+		"ADDON_ID",
+		action="store",
+	)
+
+	parser_install.set_defaults(run=cmd_install)
+
+	return parser, subparsers
+
+
+def make_parser_cl():
+	parser, subparsers = make_parser()
+
+	# shell
+	parser_shell = subparsers.add_parser("shell")
+	parser_shell.set_defaults(run=cmd_shell)
+
+	return parser
+
+
+def make_parser_shell():
+	parser, subparsers = make_parser()
+
+	# exit
+	parser_shell = subparsers.add_parser("exit")
+	parser_shell.set_defaults(shell_exit=True)
+
+	return parser
+
+
+parser = make_parser_cl()
+result = parser.parse_args()
+result.run(result)
