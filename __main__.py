@@ -23,7 +23,7 @@ from wowupdate.updater.addon_scanner import update_all
 
 
 
-addons_dir = os.path.join(os.getcwd(), 'Interface', 'AddOns')
+addons_dir = os.path.join(os.getcwd(), '_retail_', 'Interface', 'AddOns')
 
 
 config = Config()
@@ -31,7 +31,7 @@ config.addons_dir = addons_dir
 
 
 # read addondb
-addondb = AddOnDb(addons_dir)
+addondb = AddOnDb(config)
 addondb.open()
 
 

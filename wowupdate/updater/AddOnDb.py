@@ -25,9 +25,9 @@ addondb_filename = 'addons.db.json'
 
 
 class AddOnDb:
-	def __init__(self, addons_dir):
-		self.addons_dir = addons_dir
-		self.dirty = False
+	def __init__(self, config):
+		self.config = config
+		self.dirty  = False
 		self.addons = {}
 
 
@@ -59,57 +59,69 @@ class AddOnDb:
 
 
 	def open(self):
-		with io.open(os.path.join(self.addons_dir, addondb_filename), 'r') as input:
+		successful = False
+
+		with io.open(os.path.join(self.config.addons_dir, addondb_filename), 'r') as input:
 			data = json.load(input)
 
-			for key in data:
-				addon_data = data[key]
+			if 'addons' in data:
+				addons_list = data['addons']
 
-				addon = AddOn.parse(self.addons_dir, key)
-				toc = None
+				for key in addons_list:
+					addon_data = addons_list[key]
 
-				if addon is not None:
-					toc = addon.toc
-				else:
-					addon = AddOn(None, key)
-					toc = Toc()
+					addon = AddOn.parse(self.config.addons_dir, key)
+					toc = None
 
-				if 'folders' in addon_data:
-					for folder in addon_data['folders']:
-						addon.folders.add(folder)
+					if addon is not None:
+						toc = addon.toc
+					else:
+						addon = AddOn(None, key)
+						toc = Toc()
 
-				if 'curse_project_id' in addon_data:
-					toc.curse_project_id = addon_data['curse_project_id']
+					if 'folders' in addon_data:
+						for folder in addon_data['folders']:
+							addon.folders.add(folder)
 
-				if 'version' in addon_data:
-					toc.curse_version = None
-					toc.version = addon_data['version']
+					if 'curse_project_id' in addon_data:
+						toc.curse_project_id = addon_data['curse_project_id']
 
-				if 'ignore-updates' in addon_data:
-					addon.ignore_updates = addon_data['ignore-updates']
+					if 'version' in addon_data:
+						toc.curse_version = None
+						toc.version = addon_data['version']
 
-				addon.updateToc(toc)
+					if 'ignore-updates' in addon_data:
+						addon.ignore_updates = addon_data['ignore-updates']
 
-				self.addons[key] = addon
+					addon.updateToc(toc)
 
-			self.dirty = False
+					self.addons[key] = addon
 
-			return True
+				self.dirty = False
 
-		return False
+			successful = True
+
+			if 'config' in data:
+				self.config.config = data['config']
+
+		return successful
 
 
 	def save(self):
 		json_data = {}
+		addon_data = {}
 
 		for key in self.addons:
 			addon = self.addons[key]
-			json_data[key] = addon.to_json()
+			addon_data[key] = addon.to_json()
+
+		json_data["addons"] = addon_data
+		json_data["config"] = self.config.config
 
 		#bytes = io.BytesIO()
 		#json.dump(json_data, bytes, sort_keys=True, indent=2)
 
-		with io.open(os.path.join(self.addons_dir, addondb_filename), 'w') as output:
+		with io.open(os.path.join(self.config.addons_dir, addondb_filename), 'w') as output:
 			#output.write(bytes)
 			json.dump(json_data, output, sort_keys=True, indent=2)
 

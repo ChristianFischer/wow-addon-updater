@@ -54,6 +54,14 @@ class DownloadableWrapper(IDownloadable):
 
 class IUpdater:
 
+	def __init__(self, config):
+		self.config = config
+
+
+	def isPreferredUpdaterFor(self, addon):
+		return False
+
+
 	def canHandle(self, addon):
 		return False
 

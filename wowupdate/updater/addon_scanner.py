@@ -22,16 +22,12 @@ from builtins import range
 from wowupdate.updater.colors import *
 
 from wowupdate.updater.AddOn import AddOn
-from wowupdate.updater.CurseUpdater import CurseUpdater
 
 
 
 pattern_dir = re.compile("(.*?)/.*")
 
 
-all_updaters = [
-	CurseUpdater()
-]
 
 
 def update_all(addondb, config, dry_run=False, scan_all=True):
@@ -74,7 +70,7 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 		status_color = NO_COLOR
 		status = ""
 
-		downloadable = findUpdateFor(addon)
+		downloadable = findUpdateFor(addon, config)
 		installable = None
 
 		if downloadable is not None:
@@ -116,15 +112,22 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 		addondb.save()
 
 
-def findUpdateFor(addon):
-	for updater in all_updaters:
+def findUpdateFor(addon, config):
+	for updater in config.updaters:
+		if updater.isPreferredUpdaterFor(addon):
+			update = updater.findUpdateFor(addon)
+
+			if update is not None:
+				return update
+
+	for updater in config.updaters:
 		if updater.canHandle(addon):
 			update = updater.findUpdateFor(addon)
 
 			if update is not None:
 				return update
 
-	for updater in all_updaters:
+	for updater in config.updaters:
 		update = updater.findDownloadByName(addon.name)
 
 		if update is not None:
