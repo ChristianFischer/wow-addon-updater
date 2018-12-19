@@ -51,7 +51,7 @@ class CurseUpdater(IUpdater):
 		url = ('https://wow.curseforge.com/projects/%s/files/latest' % addon_id)
 
 		try:
-			with urllib.request.urlopen(url) as response:
+			with self.httpget(url) as response:
 				return self.createDownloadableFromResponse(addon_id, addon_name, response)
 
 		except urllib.error.HTTPError:
@@ -60,7 +60,7 @@ class CurseUpdater(IUpdater):
 		url = ('https://www.curseforge.com/wow/addons/%s/download' % addon_id)
 
 		try:
-			with urllib.request.urlopen(url) as response:
+			with self.httpget(url) as response:
 				html = response.read().decode('UTF-8')
 
 				m = regex_download_link.search(html)
@@ -68,12 +68,16 @@ class CurseUpdater(IUpdater):
 					file_url = m.group(1).strip()
 					url = ('https://www.curseforge.com%s' % file_url)
 
-					with urllib.request.urlopen(url) as response2:
+					with self.httpget(url) as response2:
 						return self.createDownloadableFromResponse(addon_id, addon_name, response2)
 
 		except urllib.error.HTTPError:
 			pass
 
+
+	def httpget(self, url):
+		req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5,0'})
+		return urllib.request.urlopen(req)
 
 
 	def createDownloadableFromResponse(self, addon_id, addon_name, response):
