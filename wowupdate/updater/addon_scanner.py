@@ -16,8 +16,8 @@
 import os
 import re
 
-from builtins import len
-from builtins import range
+from builtins import *
+from time import time
 
 from wowupdate.updater.colors import *
 
@@ -27,6 +27,38 @@ from wowupdate.updater.AddOn import AddOn
 
 pattern_dir = re.compile("(.*?)/.*")
 
+
+
+def get_update_generation(addon):
+	last_updated = addon.last_updated
+	now = time()
+	age = max(0, now - last_updated)
+
+	# convert into hours
+	age /= 3600.0
+
+	# never updated
+	if last_updated == 0:
+		return 9
+
+	# last hour
+	if age < 1:
+		return 0
+
+	# less than 16h (likely the same day)
+	if age < 16:
+		return 1
+
+	# less than 48h (recently updated)
+	if age < 48:
+		return 2
+
+	# within the last 7 days
+	if age < (7 * 24):
+		return 3
+
+	# long time not updated
+	return 8
 
 
 
@@ -63,7 +95,8 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 				break
 
 	# sort by addon name (case insensitive)
-	addons.sort(key=lambda addon: addon.name.lower())
+	# and their time last updated
+	addons.sort(key=lambda addon: (get_update_generation(addon), addon.name.lower()))
 
 	for addon in addons:
 		addon_color = NO_COLOR
@@ -102,6 +135,9 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 
 					installable.install(config.addons_dir)
 					installable.updateAddonInfo(addon)
+
+					# update timestamp
+					addon.last_updated = int(time())
 
 					# store downloaded addon into addondb
 					addondb.add(addon)
