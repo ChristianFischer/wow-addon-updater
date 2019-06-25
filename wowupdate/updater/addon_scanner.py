@@ -66,6 +66,9 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 	# get the list of all known addons
 	addons = addondb.getAddons()
 
+	# store a list of updated addons
+	addons_updated = []
+
 	# if enabled, search for currently unknown addons
 	if scan_all:
 		for subdir in os.listdir(config.addons_dir):
@@ -133,6 +136,8 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 					if installable.source is not None:
 						print("  installing %s" % installable.source)
 
+					old_version = addon.version
+
 					installable.install(config.addons_dir)
 					installable.updateAddonInfo(addon)
 
@@ -142,7 +147,39 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 					# store downloaded addon into addondb
 					addondb.add(addon)
 
+					# store information of this update
+					addons_updated.append(
+						{
+							'addon': addon,
+							'from':  old_version,
+							'to':    installable.version,
+						}
+					)
+
 					print("%sDONE%s" % (GREEN, NO_COLOR))
+
+	if len(addons_updated) > 0:
+		print("")
+		print("%sSummary:%s" % (MAGENTA, NO_COLOR))
+
+		for updated in addons_updated:
+			addon        = updated['addon']
+			version_from = updated['from']
+			version_to   = updated['to']
+
+			str_addon    = addon.name
+			str_version  = ('%s => %s' % (version_from, version_to))
+			str_space    = (80 - len(str_addon) - len(str_version)) * ' '
+
+			print(
+				"%s%s%s%s%s" % (
+					MAGENTA,
+					str_addon,
+					str_space,
+					str_version,
+					NO_COLOR
+				)
+			)
 
 	if addondb.dirty:
 		addondb.save()

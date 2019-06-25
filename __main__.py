@@ -122,3 +122,5 @@ def make_parser_shell():
 parser = make_parser_cl()
 result = parser.parse_args()
 result.run(result)
+
+exit()
