@@ -22,9 +22,10 @@ from wowupdate.updater.Updater import DownloadableWrapper
 from wowupdate.updater.ZipInstaller import downloadZipFromResponse
 
 
-regex_download_link = re.compile(
-	'<a\s+class="download__link"\s+href="(/.*?/file)">'
-)
+regex_download_links = [
+	re.compile('<a\s+class="download__link"\s+href="(/.*?/file)">'),
+	re.compile('Elerium.PublicProjectDownload.countdown\("(/.*?/file)"\);')
+]
 
 
 class CurseUpdater(IUpdater):
@@ -48,28 +49,20 @@ class CurseUpdater(IUpdater):
 
 
 	def findDownloadById(self, addon_id, addon_name):
-		url = ('https://wow.curseforge.com/projects/%s/files/latest' % addon_id)
-
-		try:
-			with self.httpget(url) as response:
-				return self.createDownloadableFromResponse(addon_id, addon_name, response)
-
-		except urllib.error.HTTPError:
-			pass
-
 		url = ('https://www.curseforge.com/wow/addons/%s/download' % addon_id)
 
 		try:
 			with self.httpget(url) as response:
 				html = response.read().decode('UTF-8')
 
-				m = regex_download_link.search(html)
-				if m is not None:
-					file_url = m.group(1).strip()
-					url = ('https://www.curseforge.com%s' % file_url)
+				for regex_download_link in regex_download_links:
+					m = regex_download_link.search(html)
+					if m is not None:
+						file_url = m.group(1).strip()
+						url = ('https://www.curseforge.com%s' % file_url)
 
-					with self.httpget(url) as response2:
-						return self.createDownloadableFromResponse(addon_id, addon_name, response2)
+						with self.httpget(url) as response2:
+							return self.createDownloadableFromResponse(addon_id, addon_name, response2)
 
 		except urllib.error.HTTPError:
 			pass
