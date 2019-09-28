@@ -1,5 +1,6 @@
 
 from wowupdate.updater.CurseUpdater import CurseUpdater
+from wowupdate.updater.GithubUpdater import GithubUpdater
 from wowupdate.updater.TSMUpdater import TSMUpdater
 
 
@@ -9,6 +10,7 @@ class Config:
 		self.config = {}
 		self.updaters = [
 			CurseUpdater(self),
+			GithubUpdater(self),
 			TSMUpdater(self)
 		]
 

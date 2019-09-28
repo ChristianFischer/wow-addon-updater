@@ -23,7 +23,7 @@ from wowupdate.updater.addon_scanner import update_all
 
 
 
-addons_dir = os.path.join(os.getcwd(), '_retail_', 'Interface', 'AddOns')
+addons_dir = os.path.join(os.getcwd(), 'Interface', 'AddOns')
 
 
 config = Config()

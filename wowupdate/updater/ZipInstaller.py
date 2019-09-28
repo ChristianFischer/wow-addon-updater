@@ -18,40 +18,42 @@ import os
 import re
 import shutil
 import time
+import urllib.request
 
 from zipfile import ZipFile
 
 from builtins import AttributeError
 from builtins import Exception
-from builtins import set
 
 from wowupdate.updater.AddOn import Toc
 from wowupdate.updater.Updater import IDownloadable
 from wowupdate.updater.Updater import IInstallable
 
 
-pattern_dir = re.compile("(.*?)/.*")
-
-
-
 class ZipInstallable(IInstallable):
 
-	def __init__(self, zipfl):
+	def __init__(self, zipfl, root_dir=None):
 		IInstallable.__init__(self)
 		self.zipfl = zipfl
+		self.subdir_prefix = ''
 		self.toc = None
+
+		if root_dir is not None:
+			self.subdir_prefix = root_dir + '/'
 
 
 	def parseZipInfo(self):
 		self.folders.clear()
 
+		pattern_dir = re.compile("%s(.*?)/.*" % self.subdir_prefix)
+
 		for info in self.zipfl.infolist():
 			m = pattern_dir.match(info.filename)
 			if m is not None:
-				root_dir = m.group(1).strip()
+				folder = m.group(1).strip()
 
-				if root_dir != "":
-					self.folders.add(root_dir)
+				if folder != "" and not folder.startswith('.'):
+					self.folders.add(folder)
 
 
 	def install(self, addons_dir):
@@ -60,8 +62,12 @@ class ZipInstallable(IInstallable):
 
 		for root_dir in self.folders:
 			path = os.path.join(addons_dir, root_dir)
-			if os.path.exists(path):
+
+			while os.path.exists(path):
 				shutil.rmtree(path)
+
+				# some delay to ensure the directory is deleted
+				time.sleep(0.100)
 
 			if os.path.exists(path):
 				raise Exception("path %s was not deleted." % path)
@@ -69,7 +75,29 @@ class ZipInstallable(IInstallable):
 		# some delay to ensure the directory is deleted
 		time.sleep(0.100)
 
-		self.zipfl.extractall(addons_dir)
+		# self.zipfl.extractall(addons_dir)
+
+		for info in self.zipfl.infolist():
+			for folder in self.folders:
+				folder_path = self.subdir_prefix + folder + '/'
+				if info.filename.startswith(folder_path):
+					file_path = os.path.relpath(info.filename, folder_path)
+					src_file = self.zipfl.open(info)
+					dst_path = os.path.join(addons_dir, folder, file_path)
+
+					if ".." in dst_path:
+						print("lala")
+						pass
+
+					if info.is_dir():
+						os.makedirs(dst_path, exist_ok=False)
+					else:
+						parent_path = os.path.dirname(dst_path)
+						os.makedirs(parent_path, exist_ok=True)
+
+						with io.open(dst_path, 'wb') as dst_file:
+							shutil.copyfileobj(src_file, dst_file)
+							dst_file.close()
 
 		self.zipfl.close()
 
@@ -80,32 +108,31 @@ class ZipInstallable(IInstallable):
 		addon.version = self.version
 
 
+	def findFileInZip(self, file):
+		lower_filename = (self.subdir_prefix + file).lower()
 
-def findFileInZip(zipfl, file):
-	lower_filename = file.lower()
+		for fileinfo in self.zipfl.infolist():
+			if fileinfo.filename.lower() == lower_filename:
+				return fileinfo
 
-	for fileinfo in zipfl.infolist():
-		if fileinfo.filename.lower() == lower_filename:
-			return fileinfo
-
-	return None
-
+		return None
 
 
-def downloadZipFromResponse(response, name=None, source=None, version=None):
+
+def downloadZipFromResponse(response, name=None, source=None, version=None, zip_root=None):
 	zipdata_bytes = response.read()
 	zipdata = io.BytesIO(zipdata_bytes)
 
 	zipfl = ZipFile(zipdata, 'r')
 
-	installable = ZipInstallable(zipfl)
+	installable = ZipInstallable(zipfl, root_dir=zip_root)
 	installable.parseZipInfo()
 	installable.source  = source
 	installable.version = version
 
 	if name is not None:
 		toc_file_name = name + '/' + name + '.toc'
-		toc_file_info = findFileInZip(zipfl, toc_file_name)
+		toc_file_info = installable.findFileInZip(toc_file_name)
 
 		if toc_file_info is not None:
 			with zipfl.open(toc_file_info, 'r') as toc_file:
@@ -124,15 +151,28 @@ def downloadZipFromResponse(response, name=None, source=None, version=None):
 
 
 class ZipDownloadable(IDownloadable):
-	def __init__(self, response):
+	def __init__(self, url=None, response=None):
 		IDownloadable.__init__(self)
 		self.name     = None
+		self.url      = url
 		self.response = response
 
 	def download(self):
-		return downloadZipFromResponse(
-			self.response,
-			source=self.url,
-			name=self.name,
-			version=self.version
-		)
+		if self.response is not None:
+			return downloadZipFromResponse(
+				self.response,
+				source=self.url,
+				name=self.name,
+				version=self.version
+			)
+
+		if self.url is not None:
+			with urllib.request.urlopen(self.url) as response:
+				return downloadZipFromResponse(
+					response,
+					source=self.url,
+					name=self.name,
+					version=self.version
+				)
+
+		return None

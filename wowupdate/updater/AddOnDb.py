@@ -86,6 +86,9 @@ class AddOnDb:
 					if 'curse_project_id' in addon_data:
 						toc.curse_project_id = addon_data['curse_project_id']
 
+					if 'git.url' in addon_data:
+						toc.git_url = addon_data['git.url']
+
 					if 'version' in addon_data:
 						toc.curse_version = None
 						toc.version = addon_data['version']

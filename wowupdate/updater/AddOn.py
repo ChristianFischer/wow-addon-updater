@@ -79,6 +79,7 @@ class Toc:
 
 		self.curse_version		= None
 		self.curse_project_id	= None
+		self.git_url			= None
 		self.website_url		= None
 
 
@@ -155,6 +156,9 @@ class AddOn:
 
 		if self.toc.curse_project_id is not None:
 			data['curse_project_id'] = self.toc.curse_project_id
+
+		if self.toc.git_url is not None:
+			data['git.url'] = self.toc.git_url
 
 		if self.last_updated > 0:
 			data['last-updated'] = self.last_updated
