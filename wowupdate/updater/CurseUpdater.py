@@ -13,6 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import gzip
+import io
 import re
 import urllib.error
 import urllib.request
@@ -49,28 +51,72 @@ class CurseUpdater(IUpdater):
 
 
 	def findDownloadById(self, addon_id, addon_name):
-		url = ('https://www.curseforge.com/wow/addons/%s/download' % addon_id)
+		url1 = ('https://www.curseforge.com/wow/addons/%s/download' % addon_id)
 
 		try:
-			with self.httpget(url) as response:
-				html = response.read().decode('UTF-8')
+			with self.httpget(url1) as response:
+				data = response.read()
+
+				if len(data) >= 2 and data[0] == 0x1f and data[1] == 0x8b:
+					gz = gzip.GzipFile(fileobj=io.BytesIO(data))
+					data = gz.read()
+
+				html = data.decode('UTF-8')
 
 				for regex_download_link in regex_download_links:
 					m = regex_download_link.search(html)
 					if m is not None:
 						file_url = m.group(1).strip()
-						url = ('https://www.curseforge.com%s' % file_url)
+						url2 = ('https://www.curseforge.com%s' % file_url)
 
-						with self.httpget(url) as response2:
+						with self.httpget(url2, referer=url1) as response2:
 							return self.createDownloadableFromResponse(addon_id, addon_name, response2)
 
 		except urllib.error.HTTPError:
 			pass
 
 
-	def httpget(self, url):
-		req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5,0'})
-		return urllib.request.urlopen(req)
+	class CurseRedirectHandler(urllib.request.HTTPRedirectHandler):
+		def __init__(self):
+			pass
+
+		def redirect_request(self, req, fp, code, msg, headers, newurl):
+			referer = req.full_url
+			headers['Referer'] = referer
+
+			req = urllib.request.Request(url=newurl, headers=headers)
+
+			return req
+
+
+	def httpget(self, url, referer=None):
+		headers = {
+			'Host':                      'www.curseforge.com',
+			'User-Agent':                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:69.0) Gecko/20100101 Firefox/69.0',
+			'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+			'Accept-Language':           'de,en-US;q=0.7,en;q=0.3',
+			'Accept-Encoding':           'gzip, deflate, br',
+			'DNT':                       '1',
+			'Connection':                'keep-alive',
+			'Upgrade-Insecure-Requests': '1',
+			'Cache-Control':             'max-age=0',
+			'TE':                        'Trailers',
+		}
+
+		if referer is not None:
+			headers['Referer'] = referer
+
+		redirect_handler = self.CurseRedirectHandler()
+
+		opener = urllib.request.build_opener(redirect_handler)
+		urllib.request.install_opener(opener)
+
+		req = urllib.request.Request(url, headers=headers)
+		response = urllib.request.urlopen(req)
+
+		urllib.request.install_opener(None)
+
+		return response
 
 
 	def createDownloadableFromResponse(self, addon_id, addon_name, response):
