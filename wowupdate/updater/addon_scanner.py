@@ -15,6 +15,7 @@
 
 import os
 import re
+import urllib.error
 
 from builtins import *
 from time import time
@@ -106,27 +107,37 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 		status_color = NO_COLOR
 		status = ""
 
-		downloadable = findUpdateFor(addon, config)
 		installable = None
 
-		if downloadable is not None:
-			status = downloadable.version
-			status_color = GRAY
+		try:
+			downloadable = findUpdateFor(addon, config)
 
-			if addon.isVersionUpgrade(downloadable.version):
-				installable = downloadable.download()
+			if downloadable is not None:
+				status = downloadable.version
+				status_color = GRAY
 
-				if installable is not None:
-					if addon.isVersionUpgrade(installable.version):
-						if addon.ignore_updates:
-							status = "[ign] %s" % installable.version
-							status_color = YELLOW
-							installable = None
-						else:
-							status = "=> %s" % installable.version
-							status_color = GREEN
-		else:
-			addon_color = GRAY
+				if addon.isVersionUpgrade(downloadable.version):
+					installable = downloadable.download()
+
+					if installable is not None:
+						if addon.isVersionUpgrade(installable.version):
+							if addon.ignore_updates:
+								status = "[ign] %s" % installable.version
+								status_color = YELLOW
+								installable = None
+							else:
+								status = "=> %s" % installable.version
+								status_color = GREEN
+			else:
+				addon_color = GRAY
+
+		except urllib.error.HTTPError as exc:
+			status = ("%d: %s" % (exc.code, exc.msg))
+			status_color = RED
+
+		except BaseException as exc:
+			status = exc
+			status_color = RED
 
 		print("%s%-55s%s%25s%s" % (addon_color, addon.to_string(), status_color, status, NO_COLOR))
 

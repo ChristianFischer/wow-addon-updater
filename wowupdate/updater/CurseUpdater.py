@@ -72,8 +72,9 @@ class CurseUpdater(IUpdater):
 						with self.httpget(url2, referer=url1) as response2:
 							return self.createDownloadableFromResponse(addon_id, addon_name, response2)
 
-		except urllib.error.HTTPError:
-			pass
+		except urllib.error.HTTPError as exc:
+			if exc.code != 404:
+				raise exc
 
 
 	class CurseRedirectHandler(urllib.request.HTTPRedirectHandler):
