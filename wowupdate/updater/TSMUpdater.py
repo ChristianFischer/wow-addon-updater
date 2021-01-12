@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import datetime
 import hashlib
 import io
 import json
@@ -103,6 +104,15 @@ class TSMHelper:
 					last_modified = realm_last_modified
 
 		return last_modified
+
+
+	def getVersionCode(self):
+		last_modified = self.getLastModifiedTimestamp()
+		timestamp = datetime.datetime.fromtimestamp(last_modified)
+		version = timestamp.strftime("%Y%m%d%H%M%S")
+
+		return version
+
 
 
 	def request(self, *args):
@@ -224,12 +234,12 @@ class TSMAppDataDownloader(IDownloadable):
 		self.tsm           = tsm
 		self.status_data   = status_data
 		self.appdata_addon = appdata_addon
-		self.version       = tsm.getLastModifiedTimestamp()
+		self.version       = tsm.getVersionCode()
 
 
 	def download(self):
 		status_data = self.status_data
-		last_modified = self.tsm.getLastModifiedTimestamp()
+		last_modified = int(time())
 
 		out = io.StringIO()
 
