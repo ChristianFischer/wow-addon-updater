@@ -14,6 +14,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import datetime
+import gzip
 import hashlib
 import io
 import json
@@ -72,7 +73,7 @@ class TSMHelper:
 
 	def getStatusData(self):
 		if self.status_data is None:
-			status = self.request('status')
+			status = self.tsm_request('status')
 
 			if status is None:
 				self.log_error("Failed to receive status from TSM host")
@@ -115,7 +116,7 @@ class TSMHelper:
 
 
 
-	def request(self, *args):
+	def tsm_request(self, *args):
 		if self.session_id is None:
 			success = False
 			tsm_config = self.config.getConfig("tsm")
@@ -129,7 +130,11 @@ class TSMHelper:
 			if success is False:
 				return None
 
-		return self.do_request(*args)
+		return self.do_tsm_request(*args)
+
+
+	def url_request(self, url):
+		return self.do_url_request(url)
 
 
 	def login(self, username, passwd):
@@ -138,7 +143,7 @@ class TSMHelper:
 		passwd_salted = passwd_hash_1 + get_password_salt()
 		passwd_hash_2 = hashlib.sha512(bytearray(passwd_salted, 'UTF-8')).hexdigest()
 
-		result = self.do_request('login', username_hash, passwd_hash_2)
+		result = self.do_tsm_request('login', username_hash, passwd_hash_2)
 
 		if result is not None:
 			userdata = self.parseJsonResponse(result)
@@ -153,7 +158,7 @@ class TSMHelper:
 		return False
 
 
-	def do_request(self, *args):
+	def do_tsm_request(self, *args):
 		current_time = int(time())
 
 		token = ('%i:%i:%s' % (self.version, current_time, get_token_salt()))
@@ -182,10 +187,27 @@ class TSMHelper:
 			urllib.parse.urlencode(query_params),
 		)
 
+		result = self.do_url_request(url)
+
+		return result
+
+
+	def do_url_request(self, url):
 		self.log("open url: %s" % url)
 
 		with urllib.request.urlopen(url, ) as response:
-			return response.read().decode('UTF-8')
+			data = response.read()
+
+			# unzip gzipped data, if found
+			if len(data) >= 2 and data[0] == 0x1f and data[1] == 0x8b:
+				bytes = io.BytesIO(data)
+				gz    = gzip.GzipFile(fileobj=bytes)
+				data  = gz.read()
+
+			# decode
+			data = data.decode('UTF-8')
+
+			return data
 
 
 	def parseJsonResponse(self, json_str):
@@ -251,9 +273,13 @@ class TSMAppDataDownloader(IDownloadable):
 
 			self.tsm.log("update region #%i: %s" % (region_id, name))
 
-			data = self.tsm.request('auctiondb', 'region', str(region_id))
-			j = self.tsm.parseJsonResponse(data)
-			data = j['data']
+			if 'downloadUrl' in region:
+				download_url = region['downloadUrl']
+				data = self.tsm.url_request(download_url)
+			else:
+				data = self.tsm.tsm_request('auctiondb', 'region', str(region_id))
+				j = self.tsm.parseJsonResponse(data)
+				data = j['data']
 
 			out.write('select(2, ...).LoadData("AUCTIONDB_MARKET_DATA","%s", [[return ' % name)
 			out.write(data)
@@ -268,9 +294,13 @@ class TSMAppDataDownloader(IDownloadable):
 
 			self.tsm.log("update realm #%i: %s" % (realm_id, name))
 
-			data = self.tsm.request('auctiondb', 'realm', str(realm_id))
-			j = self.tsm.parseJsonResponse(data)
-			data = j['data']
+			if 'downloadUrl' in realm:
+				download_url = realm['downloadUrl']
+				data = self.tsm.url_request(download_url)
+			else:
+				data = self.tsm.tsm_request('auctiondb', 'realm', str(realm_id))
+				j = self.tsm.parseJsonResponse(data)
+				data = j['data']
 
 			out.write('select(2, ...).LoadData("AUCTIONDB_MARKET_DATA","%s",[[return ' % name)
 			out.write(data)
