@@ -70,6 +70,9 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 	# store a list of updated addons
 	addons_updated = []
 
+	# store list of abandoned addons
+	addons_abandoned = []
+
 	# if enabled, search for currently unknown addons
 	if scan_all:
 		for subdir in os.listdir(config.addons_dir):
@@ -97,6 +100,15 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 			if addon.dependsOn(maybe_parent):
 				addons.remove(addon)
 				break
+
+	# find addons, which folders does not exist anymore and probably were deleted manually
+	for addon_index in range(len(addons) - 1, 0, -1):
+		addon = addons[addon_index]
+
+		if not addon.checkIfAnyFolderExists(config.addons_dir):
+			addons_abandoned.append(addon)
+			addons.remove(addon)
+			addondb.remove(addon)
 
 	# sort by addon name (case insensitive)
 	# and their time last updated
@@ -178,7 +190,7 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 			version_from = updated['from']
 			version_to   = updated['to']
 
-			str_addon    = addon.name
+			str_addon    = addon.display_name
 			str_version  = ('%s => %s' % (version_from, version_to))
 			str_space    = (80 - len(str_addon) - len(str_version)) * ' '
 
@@ -188,6 +200,19 @@ def update_all(addondb, config, dry_run=False, scan_all=True):
 					str_addon,
 					str_space,
 					str_version,
+					NO_COLOR
+				)
+			)
+
+	if len(addons_abandoned) > 0:
+		print("")
+		print("%sSome AddOns were probably manually deleted:%s" % (GRAY, NO_COLOR))
+
+		for addon in addons_abandoned:
+			print(
+				"%s%s%s" % (
+					GRAY,
+					addon.display_name,
 					NO_COLOR
 				)
 			)

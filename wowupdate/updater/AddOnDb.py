@@ -41,6 +41,12 @@ class AddOnDb:
 		self.dirty = True
 
 
+	def remove(self, addon):
+		if addon.name in self.addons:
+			del self.addons[addon.name]
+			self.dirty = True
+
+
 	def getAddons(self):
 		addons = []
 
@@ -76,7 +82,7 @@ class AddOnDb:
 					if addon is not None:
 						toc = addon.toc
 					else:
-						addon = AddOn(None, key)
+						addon = AddOn(key)
 						toc = Toc()
 
 					if 'folders' in addon_data:

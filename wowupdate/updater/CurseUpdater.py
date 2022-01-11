@@ -15,22 +15,35 @@
 
 import gzip
 import io
+import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from wowupdate.updater.Updater import IUpdater
 from wowupdate.updater.Updater import DownloadableWrapper
 from wowupdate.updater.ZipInstaller import downloadZipFromResponse
+from wowupdate.updater.ZipInstaller import ZipDownloadable
 
 
 regex_download_links = [
-	re.compile('<a\s+class="download__link"\s+href="(/.*?/file)">'),
-	re.compile('Elerium.PublicProjectDownload.countdown\("(/.*?/file)"\);')
+	re.compile('<a\\s+class="download__link"\\s+href="(/.*?/file)">'),
+	re.compile('Elerium.PublicProjectDownload.countdown\\("(/.*?/file)"\\);')
 ]
 
 
 class CurseUpdater(IUpdater):
+
+	# ID for WoW in the curse repository
+	GAME_ID_WOW = 1
+
+	# flavor for retail wow (unlike classic)
+	GAME_FLAVOR_WOW_RETAIL = 'wow_retail'
+
+	FILE_TYPE_RELEASE = 1
+	FILE_TYPE_BETA    = 2
+	FILE_TYPE_ALPHA   = 3
 
 	def canHandle(self, addon):
 		if addon.toc.curse_project_id is None:
@@ -43,38 +56,87 @@ class CurseUpdater(IUpdater):
 
 
 	def findUpdateFor(self, addon):
-		return self.findDownloadById(addon.toc.curse_project_id, addon.name)
+		project_id = addon.toc.curse_project_id
+
+		if project_id.isdecimal():
+			# when project id is numeric, we can query the API for the id
+			return self.findDownloadById(project_id, addon.name)
+		else:
+			# for non-numeric IDs we try to search and match to the 'slug' entry
+			return self.findDownloadBySearchQuery(
+					project_id,
+					selector=lambda json_data: json_data['slug'] == project_id
+			)
 
 
 	def findDownloadByName(self, addon_name):
-		return self.findDownloadById(addon_name.lower(), addon_name)
+		return self.findDownloadBySearchQuery(
+				addon_name,
+				selector=lambda json_data: json_data['name'] == addon_name or json_data['slug'] == addon_name
+		)
+
+
+	def findDownloadBySearchQuery(self, query, selector):
+		escaped_query = urllib.parse.quote(query)
+		url = ('https://addons-ecs.forgesvc.net/api/v2/addon/search?gameId=%i&pageSize=25&searchFilter=%s' % (self.GAME_ID_WOW, escaped_query))
+
+		try:
+			with self.httpget(url) as response:
+				text = self.readTextFromResponse(response)
+				json_data = json.loads(text)
+
+				for addon_json_data in json_data:
+					if selector(addon_json_data):
+						downloadable = self.createDownloadableFromJsonData(addon_json_data)
+
+						return downloadable
+
+				return None
+
+		except urllib.error.HTTPError as exc:
+			raise exc
 
 
 	def findDownloadById(self, addon_id, addon_name):
-		url1 = ('https://www.curseforge.com/wow/addons/%s/download' % addon_id)
+		url = ('https://addons-ecs.forgesvc.net/api/v2/addon/%s' % urllib.parse.quote(addon_id))
 
 		try:
-			with self.httpget(url1) as response:
-				data = response.read()
+			with self.httpget(url) as response:
+				text = self.readTextFromResponse(response)
+				json_data = json.loads(text)
 
-				if len(data) >= 2 and data[0] == 0x1f and data[1] == 0x8b:
-					gz = gzip.GzipFile(fileobj=io.BytesIO(data))
-					data = gz.read()
-
-				html = data.decode('UTF-8')
-
-				for regex_download_link in regex_download_links:
-					m = regex_download_link.search(html)
-					if m is not None:
-						file_url = m.group(1).strip()
-						url2 = ('https://www.curseforge.com%s' % file_url)
-
-						with self.httpget(url2, referer=url1) as response2:
-							return self.createDownloadableFromResponse(addon_id, addon_name, response2)
+				return self.createDownloadableFromJsonData(json_data)
 
 		except urllib.error.HTTPError as exc:
-			if exc.code != 404:
-				raise exc
+			raise exc
+
+
+	def createDownloadableFromJsonData(self, json_data):
+		selected_file_id = 0
+		selected_file = None
+
+		for v in json_data['gameVersionLatestFiles']:
+			if v['gameVersionFlavor'] != self.GAME_FLAVOR_WOW_RETAIL:
+				continue
+
+			if v['fileType'] != self.FILE_TYPE_RELEASE:
+				continue
+
+			selected_file_id = max(selected_file_id, v['projectFileId'])
+
+		if selected_file_id != 0:
+			for v in json_data['latestFiles']:
+				if v['id'] == selected_file_id:
+					selected_file = v
+
+		if selected_file is not None:
+			file_url = selected_file['downloadUrl']
+
+			downloadable = ZipDownloadable(url=file_url)
+			downloadable.name = json_data['name']
+			downloadable.version = selected_file['displayName']
+
+			return downloadable
 
 
 	class CurseRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -92,16 +154,11 @@ class CurseUpdater(IUpdater):
 
 	def httpget(self, url, referer=None):
 		headers = {
-			'Host':                      'www.curseforge.com',
-			'User-Agent':                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:69.0) Gecko/20100101 Firefox/69.0',
-			'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-			'Accept-Language':           'de,en-US;q=0.7,en;q=0.3',
+			'User-Agent':                'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0',
+			'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+			'Accept-Charset':            'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
 			'Accept-Encoding':           'gzip, deflate, br',
-			'DNT':                       '1',
 			'Connection':                'keep-alive',
-			'Upgrade-Insecure-Requests': '1',
-			'Cache-Control':             'max-age=0',
-			'TE':                        'Trailers',
 		}
 
 		if referer is not None:
@@ -120,7 +177,19 @@ class CurseUpdater(IUpdater):
 		return response
 
 
-	def createDownloadableFromResponse(self, addon_id, addon_name, response):
+	def readTextFromResponse(self, response):
+		data = response.read()
+
+		if len(data) >= 2 and data[0] == 0x1f and data[1] == 0x8b:
+			gz = gzip.GzipFile(fileobj=io.BytesIO(data))
+			data = gz.read()
+
+		text = data.decode('UTF-8')
+
+		return text
+
+
+	def createDownloadableFromDownloadPageResponse(self, addon_id, addon_name, response):
 		url = response.url
 
 		pattern_zip_version = re.compile('.*/%s[-+_]?(.*)\.zip' % addon_name, re.IGNORECASE)

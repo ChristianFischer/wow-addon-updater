@@ -49,6 +49,9 @@ class Toc:
 				key = m.group(1).strip()
 				val = m.group(2).strip()
 
+				if key == 'Title':
+					toc.title = val
+
 				if key == 'Version':
 					version = val
 
@@ -73,7 +76,38 @@ class Toc:
 		return toc
 
 
+	def getUnformattedDisplayName(self):
+		d = ''
+		i = 0
+
+		while i < len(self.title):
+			c = self.title[i]
+
+			if c == '|':
+				i += 1
+				command = self.title[i]
+
+				if command == 'c':
+					i += 8
+
+				if command == 'T':
+					while i < len(self.title) and self.title[i] != '|':
+						i += 1
+
+					i -= 1
+
+			else:
+				d += c
+
+			i += 1
+
+		d = d.strip()
+
+		return d
+
+
 	def __init__(self):
+		self.title				= None
 		self.version			= None
 		self.dependencies		= []
 
@@ -87,11 +121,12 @@ class Toc:
 
 class AddOn:
 	@staticmethod
-	def parse(path, name):
+	def parse(addons_path, name):
+		path = os.path.join(addons_path, name)
 		toc = Toc.parseFile(os.path.join(path, name+'.toc'))
 
 		if toc is not None:
-			addon = AddOn(path, name)
+			addon = AddOn(name)
 			addon.updateToc(toc)
 
 			return addon
@@ -99,9 +134,9 @@ class AddOn:
 		return None
 
 
-	def __init__(self, path, name):
-		self.path				= path
+	def __init__(self, name):
 		self.name				= name
+		self.display_name		= name
 		self.folders			= set()
 		self.toc				= Toc()
 		self.last_updated		= 0
@@ -114,6 +149,11 @@ class AddOn:
 	def updateToc(self, toc):
 		self.toc				= toc
 		self.version			= toc.version
+
+		if toc.title is not None:
+			self.display_name	= toc.getUnformattedDisplayName()
+		else:
+			self.display_name	= self.name
 
 
 	def dependsOn(self, other_addon):
@@ -128,6 +168,16 @@ class AddOn:
 	def isVersionUpgrade(self, version):
 		if self.version != version:
 			return True
+
+		return False
+
+
+	def checkIfAnyFolderExists(self, addons_path):
+		for f in self.folders:
+			path = os.path.join(addons_path, f)
+
+			if os.path.exists(path):
+				return True
 
 		return False
 
@@ -170,6 +220,6 @@ class AddOn:
 
 
 	def to_string(self):
-		return "%s (%s)" % (self.name, self.version)
+		return "%s (%s)" % (self.display_name, self.version)
 
 
