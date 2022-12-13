@@ -56,7 +56,7 @@ class TSMHelper:
 	def __init__(self, config):
 		self.config      = config
 		self.channel     = 'release'
-		self.version     = 400
+		self.version     = 41200
 		self.userdata    = None
 		self.session_id  = None
 		self.status_data = None
@@ -85,6 +85,25 @@ class TSMHelper:
 		return self.status_data
 
 
+	@staticmethod
+	def read_last_modified_from(item_data):
+		last_modified = 0
+
+		if 'pricingStrings' in item_data:
+			pricing_strings = item_data['pricingStrings']
+
+			for key, entry in pricing_strings.items():
+				if 'lastModified' in entry:
+					item_last_modified = entry['lastModified']
+					last_modified = max(last_modified, item_last_modified)
+
+		elif 'lastModified' in item_data:
+			item_last_modified = item_data['lastModified']
+			last_modified = max(last_modified, item_last_modified)
+
+		return last_modified
+
+
 	def getLastModifiedTimestamp(self):
 		status_data = self.getStatusData()
 		last_modified = 0
@@ -92,17 +111,11 @@ class TSMHelper:
 		if status_data is not None:
 			# get region data
 			for region in status_data['regions']:
-				region_last_modified = region['lastModified']
-
-				if region_last_modified > last_modified:
-					last_modified = region_last_modified
+				last_modified = max(last_modified, TSMHelper.read_last_modified_from(region))
 
 			# get realm data
 			for realm in status_data['realms']:
-				realm_last_modified = realm['lastModified']
-
-				if realm_last_modified > last_modified:
-					last_modified = realm_last_modified
+				last_modified = max(last_modified, TSMHelper.read_last_modified_from(realm))
 
 		return last_modified
 
@@ -247,8 +260,45 @@ class TSMUpdater(IUpdater):
 
 
 
+class AppData:
+	AUCTIONDB_MARKET_DATA = "AUCTIONDB_MARKET_DATA"
+	APP_INFO              = "APP_INFO"
+
+	def __init__(self):
+		self.content = io.StringIO()
+
+
+	def add(self, type, realm, data, last_modified):
+		self.content.write('select(2, ...).LoadData("%s","%s", [[return ' % (type, realm))
+		self.content.write(data)
+		self.content.write(']])')
+		self.content.write(" --<%s,%s,%s>" % (type, realm, last_modified))
+		self.content.write('\n')
+
+
+	def get_content(self):
+		content_str = self.content.getvalue()
+		self.content.close()
+
+		return content_str
+
+
 
 class TSMAppDataDownloader(IDownloadable):
+
+	API_REALM_ENTRIES = {
+		'AUCTIONDB_REALM_DATA':       'data',
+		'AUCTIONDB_REALM_SCAN_STAT':  'scanStat',
+		'AUCTIONDB_REALM_HISTORICAL': 'historical',
+	}
+
+	API_REGION_ENTRIES = {
+		'AUCTIONDB_REGION_HISTORICAL': 'historical',
+		'AUCTIONDB_REGION_SALE':       'sale',
+		'AUCTIONDB_REGION_STAT':       'stat',
+		'AUCTIONDB_REGION_COMMODITY':  'commodity'
+	}
+
 
 	def __init__(self, tsm, status_data, appdata_addon):
 		IDownloadable.__init__(self)
@@ -263,7 +313,7 @@ class TSMAppDataDownloader(IDownloadable):
 		status_data = self.status_data
 		last_modified = int(time())
 
-		out = io.StringIO()
+		appdata = AppData()
 
 		# get region data
 		for region in status_data['regions']:
@@ -273,18 +323,29 @@ class TSMAppDataDownloader(IDownloadable):
 
 			self.tsm.log("update region #%i: %s" % (region_id, name))
 
-			if 'downloadUrl' in region:
+			if 'pricingStrings' in region:
+				pricing_strings = region['pricingStrings']
+
+				self.download_pricing_strings(
+					name,
+					region_last_modified,
+					appdata,
+					pricing_strings,
+					TSMAppDataDownloader.API_REGION_ENTRIES
+				)
+
+			elif 'downloadUrl' in region:
 				download_url = region['downloadUrl']
 				data = self.tsm.url_request(download_url)
+
+				appdata.add(AppData.AUCTIONDB_MARKET_DATA, name, data, region_last_modified)
+
 			else:
 				data = self.tsm.tsm_request('auctiondb', 'region', str(region_id))
 				j = self.tsm.parseJsonResponse(data)
 				data = j['data']
 
-			out.write('select(2, ...).LoadData("AUCTIONDB_MARKET_DATA","%s", [[return ' % name)
-			out.write(data)
-			out.write(']])')
-			out.write('\n')
+				appdata.add(AppData.AUCTIONDB_MARKET_DATA, name, data, region_last_modified)
 
 		# get realm data
 		for realm in status_data['realms']:
@@ -294,29 +355,61 @@ class TSMAppDataDownloader(IDownloadable):
 
 			self.tsm.log("update realm #%i: %s" % (realm_id, name))
 
-			if 'downloadUrl' in realm:
+			if 'pricingStrings' in realm:
+				pricing_strings = realm['pricingStrings']
+
+				self.download_pricing_strings(
+					name,
+					realm_last_modified,
+					appdata,
+					pricing_strings,
+					TSMAppDataDownloader.API_REALM_ENTRIES
+				)
+
+			elif 'downloadUrl' in realm:
 				download_url = realm['downloadUrl']
 				data = self.tsm.url_request(download_url)
+
+				appdata.add(AppData.AUCTIONDB_MARKET_DATA, name, data, realm_last_modified)
+
 			else:
 				data = self.tsm.tsm_request('auctiondb', 'realm', str(realm_id))
 				j = self.tsm.parseJsonResponse(data)
 				data = j['data']
 
-			out.write('select(2, ...).LoadData("AUCTIONDB_MARKET_DATA","%s",[[return ' % name)
-			out.write(data)
-			out.write(']])')
-			out.write('\n')
+				appdata.add(AppData.AUCTIONDB_MARKET_DATA, name, data, realm_last_modified)
 
-		out.write('select(2, ...).LoadData("APP_INFO","Global",[[return {')
-		out.write('version=%i,lastSync=%i,addonVersions={},message={id=0,msg=""},' % (self.tsm.version, last_modified))
-		out.write('news=%s' % status_data['addonNews'])
-		out.write('}]])')
+		appdata.add(
+			AppData.APP_INFO,
+			"Global",
+			'{version=%i,lastSync=%i,addonVersions={},message={id=0,msg=""},news=%s}' % (
+				self.tsm.version,
+				last_modified,
+				status_data['addonNews']
+			),
+			last_modified
+		)
 
-		appdata_content = out.getvalue()
-
-		out.close()
+		appdata_content = appdata.get_content()
 
 		return TSMAppDataInstallable(appdata_content, self.version)
+
+
+	def download_pricing_strings(self, name, last_modified, appdata, pricing_strings, entries):
+		for api_type, key in entries.items():
+			if key in pricing_strings:
+				pricing_string = pricing_strings[key]
+
+				if 'lastModified' in pricing_string:
+					item_last_modified = pricing_string['lastModified']
+				else:
+					item_last_modified = last_modified
+
+				if 'url' in pricing_string:
+					download_url = pricing_string['url']
+					data = self.tsm.url_request(download_url)
+
+					appdata.add(api_type, name, data, item_last_modified)
 
 
 
